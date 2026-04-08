@@ -28,6 +28,7 @@ class VideoPreviewView: UIView {
 // 스캐너 오버레이가 포함된 메인 카메라 뷰 (Scene 3 구현)
 struct CameraView: View {
     @StateObject private var cameraManager = CameraManager()
+    @ObservedObject var stampStore: StampStore
     @Environment(\.dismiss) private var dismiss
     
     // 줌 기능을 위한 상태 변수
@@ -103,11 +104,11 @@ struct CameraView: View {
                 }
                 // 구멍을 뚫기 위해 compositingGroup 적용
                 .compositingGroup()
-                // 줌 다이얼 엣지 컨트롤 (우측 하단 코너에 밀착)
+                // 줌 다이얼 엣지 컨트롤 (우측 하단 코너 외경으로 노출)
                 .overlay(alignment: .bottomTrailing) {
                     ZoomDialEdgeView(zoomFactor: currentZoomFactor)
-                        // 다이얼 중심을 베이지 프레임의 우측 하단 코너로 이동
-                        .offset(x: 100, y: 85)
+                        // 다이얼 중심을 프레임 코너로 → 호가 바깥으로 나옴
+                        .offset(x: 125, y: 110)
                     .gesture(
                         DragGesture()
                             .onChanged { value in
@@ -133,11 +134,9 @@ struct CameraView: View {
                 
                 // 셔터 버튼
                 Button(action: {
-                    // TODO: 파일 시스템에 캡처본 저장 로직 구현
                     let generator = UIImpactFeedbackGenerator(style: .heavy)
                     generator.impactOccurred()
-                    print("스냅샷 수집 완료!")
-                    dismiss()
+                    cameraManager.capturePhoto()
                 }) {
                     Circle()
                         .fill(Color.white.opacity(0.9))
@@ -192,6 +191,16 @@ struct CameraView: View {
         .onDisappear {
             cameraManager.stopSession()
         }
+        // 카메라매니저에서 사진 캡처 완료 시 앱 내부 저장소에 추가 후 닫기
+        .onChange(of: cameraManager.capturedImage) { _, newImage in
+            if let image = newImage {
+                stampStore.addStamp(image: image)
+                
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    dismiss()
+                }
+            }
+        }
     }
     
     // 줌 배율 업데이트 및 햅틱 피드백 처리 타이밍 연동
@@ -220,7 +229,7 @@ struct CameraView: View {
 }
 
 #Preview {
-    CameraView()
+    CameraView(stampStore: StampStore())
 }
 
 // 스캐너 프레임 코너 엣지에 밀착되는 렌즈 회전형(Radial) 다이얼 뷰
@@ -316,9 +325,9 @@ struct ZoomDialEdgeView: View {
             .rotationEffect(.degrees(pointerAngle), anchor: .center)
         }
         .frame(width: dialSize, height: dialSize)
-        // 프레임 코너에서 9시~12시 방향(상단-좌측) 호만 보이도록 클리핑
+        // 프레임 코너 외경(우하단) 호만 보이도록 클리핑
         .mask(
-            Arc(startAngle: .degrees(180), endAngle: .degrees(290), clockwise: false)
+            Arc(startAngle: .degrees(350), endAngle: .degrees(100), clockwise: false)
                 .fill()
                 .frame(width: dialSize, height: dialSize)
         )
